@@ -298,12 +298,21 @@ server <- function(input, output){
                        list("mean" = ~ mean(.x, na.rm = TRUE), "median" = ~ median(.x, na.rm = TRUE)),
                        .names = "{.fn}_{.col}"
                        ))
-    
-    summary <- summary |>
-      rename(
-        "Mean Hearts Recovered" = mean_hearts_recovered,
-        "Median Hearts Recovered" = median_hearts_recovered
-      )
+    if(game =="botw"){
+      summary <- summary |>
+        rename(
+          "Mean Hearts Recovered" = mean_hearts_recovered,
+          "Median Hearts Recovered" = median_hearts_recovered
+        ) 
+      } else if(game == "totk"){
+          summary <- summary |>
+            rename(
+              "Mean Hearts Recovered" = mean_hearts_recovered,
+              "Median Hearts Recovered" = median_hearts_recovered,
+              "Mean Fuse Attack Power" = mean_fuse_attack_power,
+              "Median Fuse Attack Power" = median_fuse_attack_power
+            )
+      }
     
   })
   
@@ -346,11 +355,23 @@ server <- function(input, output){
     parsed <- fromJSON(rawToChar(GET_result$content), flatten = T)
     info <- as_tibble(parsed$data)
     
-    info |>
-      group_by(category) |>
-      drop_na(category) |>
-      summarize("SD of Hearts Recovered" = sd(hearts_recovered, na.rm = T),
-                "IQR of Hearts Recovered" = IQR(hearts_recovered, na.rm = T))
+    if(game == "botw"){
+      info |>
+        group_by(category) |>
+        drop_na(category) |>
+        summarize("SD of Hearts Recovered" = sd(hearts_recovered, na.rm = T),
+                  "IQR of Hearts Recovered" = IQR(hearts_recovered, na.rm = T))
+    } else if(game == "totk"){
+      info |>
+        group_by(category) |>
+        drop_na(category) |>
+        summarize("SD of Hearts Recovered" = sd(hearts_recovered, na.rm = T),
+                  "IQR of Hearts Recovered" = IQR(hearts_recovered, na.rm = T),
+                  "SD of Fuse Attack Power" = sd(fuse_attack_power, na.rm = T),
+                  "IQR of Fuse Attack Power" = IQR(fuse_attack_power, na.rm = T))
+    }
+    
+    
     
   })
   

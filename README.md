@@ -21,7 +21,9 @@ It also displays the following summaries based on input data:
 - DT
 
 **Code to Install All Packages**
+
 install.packages(c("httr", "jsonlite", "tidyverse", "shiny", "bslib", "ggplot2", "DT"))
 
 **Copy and Paste This into RStudio to Run App**
+
 shiny::runGitHub(repo = "Project2", username = "haydenmorgan1999")

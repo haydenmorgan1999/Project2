@@ -1,3 +1,7 @@
+###HEADER
+#Author: Hayden Morgan
+#Date: 7/8/25
+
 library("httr")
 library("jsonlite")
 library("tidyverse")
@@ -8,14 +12,13 @@ library("DT")
 
 #UI
 ui <- page_navbar(
-  navset_card_underline(
     nav_panel("About",
               tags$h1("Project 2 - Hayden Morgan"),
               p("The purpose of this app is to search the Hyrule Compendium and display its data in various ways."), 
               p("The data comes from the Hyrule Compendium API, which can be found",  
                 a("here", href = "https://gadhagod.github.io/Hyrule-Compendium-API/#/", target = "_blank"), "."), 
               p("The current tab is the 'About' tab, which explains the app."), 
-              p("The 'Data Download' tab allows you to query data and save your query."), 
+              p("The 'Data Download' tab allows you to query data and download your query."), 
               p("The 'Data Exploration' tab allows you to customize and display numerical/graphical summaries of the data."),
               img(src = "picture.jpg", width = "100%")
     ),
@@ -24,7 +27,7 @@ ui <- page_navbar(
               layout_columns(
                 card(tags$h1("Display Returned Data"),
                      radioButtons(
-                       "game1",
+                       "choosegame_downloadall",
                        label = "Which compendium?",
                        choices = 
                          c("BOTW",
@@ -33,7 +36,7 @@ ui <- page_navbar(
                      ),
                      downloadButton("download_all", "Download Compendium Data"),
                      actionButton(
-                       "return_data",
+                       "show_data_all",
                        label = "Show Data"
                      ),
                      DT::dataTableOutput(
@@ -59,29 +62,29 @@ ui <- page_navbar(
                        value = 2.5,
                        step = 0.25
                      ),
-                     downloadButton("download_data1", "Download Function 1 Data")),
+                     downloadButton("download_fxn1", "Download Function 1 Data")),
                 card(tags$h1("Function 2: Look at specific compendium entries from either BOTW or TOTK"),
                      numericInput(
-                       "entry",
+                       "entry_number",
                        label = "Which entry (enter a whole number)?",
                        value = 1
                      ),
                      radioButtons(
-                       "game", 
+                       "choosegame_downloadfxn2", 
                        label = "Which game?",
                        choices = 
                          c("BOTW",
                            "TOTK")
                      ),
-                     downloadButton("download_data2", "Download Function 2 Data")),
+                     downloadButton("download_fxn2", "Download Function 2 Data")),
                 col_widths = c(6, 3, 3)
               )
             ),
     
     nav_panel("Data Exploration",
-              card(tags$h1("What type of data do you want to see?"),
+              card(tags$h1("What type of summary do you want to see?"),
                    selectInput(
-                     "data_type",
+                     "summary_type",
                      label = "Choose a data display:",
                      choices = 
                        c("Contingency tables",
@@ -90,57 +93,75 @@ ui <- page_navbar(
                      selected = "Contingency tables"
                    ),
                    conditionalPanel(
-                     condition = "input.data_type == 'Contingency tables'",
+                     condition = "input.summary_type == 'Contingency tables'",
                      radioButtons(
-                       "game2",
+                       "choosegame_contingency",
                        label = "Which game?",
                        choices = 
                          c("BOTW",
                            "TOTK")
                      ),
+                     radioButtons(
+                       "contingency_var",
+                       label = "Which variable(s)?",
+                       choices = 
+                         c("Category",
+                           "Category x Edible Status",
+                           "Location")
+                     ),
                      actionButton(
-                       "show_data",
+                       "show_data_contingency",
                        label = "Show Data"
                      ),
-                     tableOutput("contingency1"),
-                     tableOutput("contingency2"),
-                     tableOutput("contingency3")
+                     tableOutput("contingency")
                    ),
                    conditionalPanel(
-                     condition = "input.data_type == 'Numerical summaries'",
+                     condition = "input.summary_type == 'Numerical summaries'",
                      radioButtons(
-                       "game3",
+                       "choosegame_numerical",
                        label = "Which game?",
                        choices = 
                          c("BOTW",
                            "TOTK")
                      ),
-                     actionButton(
-                       "center",
-                       label = "Measures of Center"
+                     uiOutput("numeric_var_ui"),
+                     radioButtons(
+                       "center_or_spread",
+                       label = "Do you want to measure center or spread?",
+                       choices = 
+                         c("Center",
+                           "Spread",
+                           "Both")
                      ),
-                     tableOutput("center_data1"),
-                     tableOutput("center_data2"),
                      actionButton(
-                       "spread",
-                       label = "Measures of Spread"
+                       "center_spread",
+                       label = "Show Data"
                      ),
-                     tableOutput("spread_data1"),
-                     tableOutput("spread_data2")
+                     tableOutput("center_spread_data")
                    ),
                    conditionalPanel(
-                     condition = "input.data_type == 'Plots'",
-                     radioButtons(
-                       "game4",
-                       label = "Which game?",
-                       choices = 
-                         c("BOTW",
-                           "TOTK")
-                     ),
+                     condition = "input.summary_type == 'Plots'",
+                     sidebarLayout(
+                       sidebarPanel(
+                         selectInput(
+                           "select_plot",
+                           label = "Which plot type?",
+                           choices = 
+                             c("Barplot",
+                               "Scatterplot",
+                               "Boxplot",
+                               "Heatmap"),
+                         ),
+                         uiOutput("plot_ui")
+                       ),
+                       mainPanel(
+                         plotOutput("plot_data")
+                       )
+                     )
+                     )
                    )
-                   ))
+                   )
   )
-)
 
 
 
@@ -148,45 +169,50 @@ ui <- page_navbar(
 server <- function(input, output){
   output$download_all <- downloadHandler(
     filename = function(){
-      paste0(input$game1, "_compendium.csv")
+      paste0(input$choosegame_downloadall, "_compendium.csv")
     },
     
     content = function(file){
-      game <- tolower(input$game1)
+      game <- tolower(input$choosegame_downloadall)
       
       GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=", game))
       parsed <- fromJSON(rawToChar(GET_result$content))
-      info <- parsed$data
+      data <- parsed$data
       
-      info_tibble <- tibble(
-        id = info$id,
-        name = info$name,
-        category = info$category,
-        description = info$description,
-        common_locations = list(info$common_locations),
-        drops = list(info$drops),
-        image = info$image
-      ) 
+      data_tibble <- tibble(
+        id = data$id,
+        name = data$name,
+        category = data$category,
+        description = data$description,
+        common_locations = list(data$common_locations),
+        drops = list(data$drops),
+        image = data$image
+      ) #had to manually make a tibble because it was doing something weird with
       
-      write_csv(info_tibble, file)
+      write_csv(data_tibble, file)
       
     }
   )
   
-  returned_data <- eventReactive(input$return_data, {
-    game <- tolower(input$game1)
+  all_data <- eventReactive(input$show_data_all, {
+    game <- tolower(input$choosegame_downloadall)
     GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=", game))
     parsed <- fromJSON(rawToChar(GET_result$content))
-    info <- as_tibble(parsed$data)
+    data <- as_tibble(parsed$data)
   })
   
   output$returned_data <- DT::renderDataTable({
-    returned_data()
+    all_data()
   })
   
-  output$download_data1 <- downloadHandler(
+  output$download_fxn1 <- downloadHandler(
     filename = function(){
-      paste0(input$category, "_", input$hearts, "heart.csv")
+      if(input$category %in% c("Materials", "Creatures")){
+        paste0(input$category, "_", input$hearts, "heart.csv")
+      } else {
+        paste0(input$category, ".csv")
+      }
+      
       },
     
     content = function(file){
@@ -194,220 +220,389 @@ server <- function(input, output){
       hearts <- input$hearts
       
       GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/category/", category))
-      parsed <- fromJSON(rawToChar(GET_result$content))
-      info <- as_tibble(parsed$data)
+      parsed <- fromJSON(rawToChar(GET_result$content), flatten = T)
+      data <- as_tibble(parsed$data)
       
-      if(category %in% c("materials", "creatures")){
-        info2 <- filter(info, hearts_recovered == hearts)
-        if(nrow(info2) == 0){
+      if(input$category %in% c("Materials", "Creatures")){ #https://stackoverflow.com/questions/74111575/difference-between-in-and-in-operator-in-r
+        data <- filter(data, hearts_recovered == hearts)
+        if(nrow(data) == 0){
           write_csv(tibble(message = "No data matches the search criteria."), file)
         } else {
-          write_csv(info2, file)
+          write_csv(data, file)
         }
       } else {
-        write_csv(info, file)
+        write_csv(data, file)
       }
     }
   )
   
-  output$download_data2 <- downloadHandler(
+  output$download_fxn2 <- downloadHandler(
     filename = function(){
-      paste0("entry", input$entry, "_", input$game, ".csv")
+      paste0("entry", input$entry_number, "_", input$choosegame_downloadfxn2, ".csv")
     },
     
     content = function(file){
-      entry_number <- input$entry
-      botw_or_totk <- tolower(input$game)
+      entry_number <- input$entry_number
+      game <- tolower(input$choosegame_downloadfxn2)
 
-        GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/entry/", entry_number, "?game=", botw_or_totk))
+        GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/entry/", entry_number, "?game=", game))
         parsed <- fromJSON(rawToChar(GET_result$content))
-        info <- parsed$data
+        data <- parsed$data
         
-        info_tibble <- tibble(
-          id = info$id,
-          name = info$name,
-          category = info$category,
-          description = info$description,
-          common_locations = list(info$common_locations),
-          drops = list(info$drops),
-          image = info$image
+        data_tibble <- tibble(
+          id = data$id,
+          name = data$name,
+          category = data$category,
+          description = data$description,
+          common_locations = list(data$common_locations),
+          drops = list(data$drops),
+          image = data$image
         ) 
         
-        write_csv(info_tibble, file)
+        write_csv(data_tibble, file)
       
     }
   )
   
-  shown_data1 <- eventReactive(input$show_data, {
-    game <- tolower(input$game2)
+  contingency_data <- eventReactive(input$show_data_contingency, {
+    game <- tolower(input$choosegame_contingency)
     GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=", game))
     parsed <- fromJSON(rawToChar(GET_result$content))
-    info <- as_tibble(parsed$data)
-    tbl <- table(info$category)
-    df <- as.data.frame(tbl)
-    colnames(df) <- c("Category", "Frequency")
-    df
-  })
-  
-  output$contingency1 <- renderTable({
-    shown_data1()
-  })
-  
-  shown_data2 <- eventReactive(input$show_data, {
-    game <- tolower(input$game2)
-    GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=", game))
-    parsed <- fromJSON(rawToChar(GET_result$content))
-    info <- as_tibble(parsed$data)
-    tbl <- table(info$category, info$edible, useNA = "no")
-    df <- as.data.frame(tbl)
-    colnames(df) <- c("Category", "Edible?", "Frequency")
-    df
-  })
-  
-  output$contingency2 <- renderTable({
-    shown_data2()
-  })
-  
-  shown_data3 <- eventReactive(input$show_data, {
-    game <- tolower(input$game2)
-    GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=", game))
-    parsed <- fromJSON(rawToChar(GET_result$content))
-    info <- as_tibble(parsed$data)
-    tbl <- table(unlist(info$common_locations), useNA = "no")
-    df <- as.data.frame(tbl)
-    colnames(df) <- c("Location of Compendium Entries", "Frequency")
-    df
-  })
-  
-  output$contingency3 <- renderTable({
-    shown_data3()
-  })
-  
-  center1 <- eventReactive(input$center, {
-    game <- tolower(input$game3)
-    GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=", game))
-    parsed <- fromJSON(rawToChar(GET_result$content))
-    info <- as_tibble(parsed$data)
-    info <- info |> 
-      select(-id)
+    data <- as_tibble(parsed$data)
     
-    summary <- info |>
-      group_by(category) |>
-      drop_na(category) |>
-      summarize(across(where(is.numeric),
-                       list("mean" = ~ mean(.x, na.rm = TRUE), "median" = ~ median(.x, na.rm = TRUE)),
-                       .names = "{.fn}_{.col}"
-                       ))
-    if(game =="botw"){
-      summary <- summary |>
-        rename(
-          "Mean Hearts Recovered" = mean_hearts_recovered,
-          "Median Hearts Recovered" = median_hearts_recovered
-        ) 
-      } else if(game == "totk"){
-          summary <- summary |>
-            rename(
-              "Mean Hearts Recovered" = mean_hearts_recovered,
-              "Median Hearts Recovered" = median_hearts_recovered,
-              "Mean Fuse Attack Power" = mean_fuse_attack_power,
-              "Median Fuse Attack Power" = median_fuse_attack_power
-            )
-      }
-    
-  })
-  
-  output$center_data1 <- renderTable({
-    center1()
-  })
-  
-  center2 <- eventReactive(input$center, {
-    game <- tolower(input$game3)
-    GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/category/equipment?game=", game))
-    parsed <- fromJSON(rawToChar(GET_result$content), flatten = T)
-    info <- as_tibble(parsed$data)
-    
-    info <- info |>
-      mutate(
-        attack = map_dbl(properties.attack, ~ ifelse(is.null(.x), NA_real_, .x)),
-        defense = map_dbl(properties.defense, ~ ifelse(is.null(.x), NA_real_, .x))
-      )
-    
-    info <- info |>
-      filter(attack < 1000000000) #outlier removed 
-  
-    info |>
-      summarize(
-        "Mean Equipment Attack" = mean(attack, na.rm = T),
-        "Median Equipment Attack" = median(attack, na.rm = T),
-        "Mean Equipment Defense" = mean(defense, na.rm = T),
-        "Median Equipment Defense" = median(defense, na.rm = T)
-      )
-    
-  })
-  
-  output$center_data2 <- renderTable({
-    center2()
-  })
-  
-  spread1 <- eventReactive(input$spread, {
-    game <- tolower(input$game3)
-    GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=", game))
-    parsed <- fromJSON(rawToChar(GET_result$content), flatten = T)
-    info <- as_tibble(parsed$data)
-    
-    if(game == "botw"){
-      info |>
-        group_by(category) |>
-        drop_na(category) |>
-        summarize("SD of Hearts Recovered" = sd(hearts_recovered, na.rm = T),
-                  "IQR of Hearts Recovered" = IQR(hearts_recovered, na.rm = T))
-    } else if(game == "totk"){
-      info |>
-        group_by(category) |>
-        drop_na(category) |>
-        summarize("SD of Hearts Recovered" = sd(hearts_recovered, na.rm = T),
-                  "IQR of Hearts Recovered" = IQR(hearts_recovered, na.rm = T),
-                  "SD of Fuse Attack Power" = sd(fuse_attack_power, na.rm = T),
-                  "IQR of Fuse Attack Power" = IQR(fuse_attack_power, na.rm = T))
+    if(input$contingency_var == "Category"){
+      table <- table(data$category)
+      df <- as.data.frame(table)
+      colnames(df) <- c("Category", "Frequency")
+    } else if(input$contingency_var == "Category x Edible Status"){
+      table <- table(data$category, data$edible, useNA = "no")
+      df <- as.data.frame(table)
+      colnames(df) <- c("Category", "Edible?", "Frequency")
+    } else {
+      table <- table(unlist(data$common_locations), useNA = "no")
+      df <- as.data.frame(table)
+      colnames(df) <- c("Location of Compendium Entries", "Frequency")
     }
     
-    
+    df
     
   })
   
-  output$spread_data1 <- renderTable({
-    spread1()
+  output$contingency <- renderTable({
+    contingency_data()
   })
   
-  spread2 <- eventReactive(input$spread, {
-    game <- tolower(input$game3)
+  output$numeric_var_ui <- renderUI ({
+    game <- tolower(input$choosegame_numerical)
+    if(game == "totk"){
+      radioButtons("num_var", "Which variable(s)?", choices = c("Hearts Recovered", "Fuse Attack Power", "Equipment Attack", "Equipment Defense"))
+    } else {
+      radioButtons("num_var", "Which variable(s)?", choices = c("Hearts Recovered", "Equipment Attack", "Equipment Defense"))
+    }
+  })
+  
+  num_sum <- eventReactive(input$center_spread, {
+    game <- tolower(input$choosegame_numerical)
     GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=", game))
     parsed <- fromJSON(rawToChar(GET_result$content), flatten = T)
-    info <- as_tibble(parsed$data)
+    data <- as_tibble(parsed$data)
     
-    info <- info |>
-      mutate(
-        attack = map_dbl(properties.attack, ~ ifelse(is.null(.x), NA_real_, .x)),
-        defense = map_dbl(properties.defense, ~ ifelse(is.null(.x), NA_real_, .x))
-      )
-    
-    info <- info |>
-      filter(attack < 1000000000) #outlier removed 
-    
-    info |>
-      summarize(
-        "SD of Equipment Attack" = sd(attack, na.rm = T),
-        "IQR of Equipment Attack" = IQR(attack, na.rm = T),
-        "SD of Equipment Defense" = sd(defense, na.rm = T),
-        "IQR of Equipment Defense" = IQR(defense, na.rm = T)
-      )
+    if(input$num_var == "Hearts Recovered"){
+      if(input$center_or_spread == "Center"){
+        data <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "Mean Hearts Recovered" = mean(hearts_recovered, na.rm = T),
+            "Median Hearts Recovered" = median(hearts_recovered, na.rm = T)
+          )
+      } else if(input$center_or_spread == "Spread"){
+        data <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "SD of Hearts Recovered" = sd(hearts_recovered, na.rm = T),
+            "IQR of Hearts Recovered" = IQR(hearts_recovered, na.rm = T)
+          )
+      } else {
+        center <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "Mean Hearts Recovered" = mean(hearts_recovered, na.rm = T),
+            "Median Hearts Recovered" = median(hearts_recovered, na.rm = T)
+          )
+        
+        spread <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "SD of Hearts Recovered" = sd(hearts_recovered, na.rm = T),
+            "IQR of Hearts Recovered" = IQR(hearts_recovered, na.rm = T)
+          )
+        
+        combined <- inner_join(center, spread, by = "category")
+        
+        combined
+        
+      }
+      
+    } else if(input$num_var == "Fuse Attack Power"){
+      
+      if(input$center_or_spread == "Center"){
+        data <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "Mean Fuse Attack Power" = mean(fuse_attack_power, na.rm = T),
+            "Median Fuse Attack Power" = median(fuse_attack_power, na.rm = T)
+          )
+      } else if(input$center_or_spread == "Spread"){
+        data <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "SD of Fuse Attack Power" = sd(fuse_attack_power, na.rm = T),
+            "IQR of Fuse Attack Power" = IQR(fuse_attack_power, na.rm = T)
+          )
+      } else {
+        center <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "Mean Fuse Attack Power" = mean(fuse_attack_power, na.rm = T),
+            "Median Fuse Attack Power" = median(fuse_attack_power, na.rm = T)
+          )
+        
+        spread <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "SD of Fuse Attack Power" = sd(fuse_attack_power, na.rm = T),
+            "IQR of Fuse Attack Power" = IQR(fuse_attack_power, na.rm = T)
+          )
+        
+        combined <- inner_join(center, spread, by = "category")
+        
+        combined
+        
+      }
+      
+    } else if(input$num_var == "Equipment Attack"){
+      
+      data <- data |>
+        mutate(
+          attack = map_dbl(properties.attack, ~ ifelse(is.null(.x), NA_real_, .x))
+        ) |>
+        filter(attack < 1000000000) #outlier removed 
+      
+      if(input$center_or_spread == "Center"){
+        data <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "Mean Equipment Attack" = mean(attack, na.rm = T),
+            "Median Equipment Attack" = median(attack, na.rm = T)
+          )
+      } else if(input$center_or_spread == "Spread"){
+        data <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "SD of Equipment Attack" = sd(attack, na.rm = T),
+            "IQR of Equipment Attack" = IQR(attack, na.rm = T)
+          )
+      } else {
+        center <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "Mean Equipment Attack" = mean(attack, na.rm = T),
+            "Median Equipment Attack" = median(attack, na.rm = T)
+          )
+        
+        spread <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "SD of Equipment Attack" = sd(attack, na.rm = T),
+            "IQR of Equipment Attack" = IQR(attack, na.rm = T)
+          )
+        
+        combined <- inner_join(center, spread, by = "category")
+        
+        combined
+        
+      }
+      
+    } else if(input$num_var == "Equipment Defense"){
+      
+      data <- data |>
+        mutate(
+          defense = map_dbl(properties.defense, ~ ifelse(is.null(.x), NA_real_, .x))
+        )
+      
+      if(input$center_or_spread == "Center"){
+        
+        data <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "Mean Equipment Defense" = mean(defense, na.rm = T),
+            "Median Equipment Defense" = median(defense, na.rm = T)
+          )
+      } else if(input$center_or_spread == "Spread"){
+        data <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "SD of Equipment Defense" = sd(defense, na.rm = T),
+            "IQR of Equipment Defense" = IQR(defense, na.rm = T)
+          )
+      } else {
+        center <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "Mean Equipment Defense" = mean(defense, na.rm = T),
+            "Median Equipment Defense" = median(defense, na.rm = T)
+          )
+        
+        spread <- data |>
+          group_by(category) |>
+          drop_na(category) |>
+          summarize(
+            "SD of Equipment Defense" = sd(defense, na.rm = T),
+            "IQR of Equipment Defense" = IQR(defense, na.rm = T)
+          )
+        
+        combined <- inner_join(center, spread, by = "category")
+        
+        combined
+        
+      }
+    }
     
   })
   
-  output$spread_data2 <- renderTable({
-    spread2()
+  output$center_spread_data <- renderTable({
+    num_sum()
   })
+  
+  output$plot_ui <- renderUI ({
+    if(input$select_plot == "Barplot"){
+      checkboxInput("facet_games", "Facet by game (BOTW/TOTK)?", value = FALSE)
+    } 
+  })
+  
+  output$plot_data <- renderPlot({
 
+    if(input$select_plot == "Barplot"){
+      GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=botw"))
+      parsed <- fromJSON(rawToChar(GET_result$content))
+      botw <- as_tibble(parsed$data)
+      botw <- mutate(botw, game = "BOTW")
+      
+      GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=totk"))
+      parsed <- fromJSON(rawToChar(GET_result$content), flatten = T)
+      totk <- as_tibble(parsed$data)
+      totk <- mutate(totk, game = "TOTK")
+      
+      combined <- bind_rows(botw, totk)
+      
+      if(input$facet_games == FALSE){
+        ggplot(combined, aes(x = category)) +
+          geom_bar(fill="lightblue", stat = "count") + 
+          labs(x = "Compendium Category", y = "# of Entries", title = "Count of Combined Compendium Entries in Each Category", fill = "Game")
+        
+      } else {
+        ggplot(combined, aes(x = category, fill = game)) +
+          geom_bar(stat = "count") +
+          labs(x = "Compendium Category", y = "# of Entries", title = "Count of Combined Compendium Entries in Each Category", fill = "Game") 
+      }
+      
+    } else if(input$select_plot == "Scatterplot"){
+      
+      GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/category/equipment?game=botw"))
+      parsed <- fromJSON(rawToChar(GET_result$content), flatten = T)
+      botw <- as_tibble(parsed$data)
+      botw <- mutate(botw, game = "BOTW")
+      
+      GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/category/equipment?game=totk"))
+      parsed <- fromJSON(rawToChar(GET_result$content), flatten = T)
+      totk <- as_tibble(parsed$data)
+      totk <- mutate(totk, game = "TOTK")
+      
+      combined <- bind_rows(botw, totk)
+      
+      combined <- combined |>
+        mutate(
+          attack = map_dbl(properties.attack, ~ ifelse(is.null(.x), NA_real_, .x)), 
+          defense = map_dbl(properties.defense, ~ ifelse(is.null(.x), NA_real_, .x)),
+        ) |>
+        filter(attack < 1000000000) #outlier removed
+      
+      ggplot(combined, aes(x = id, y = attack, color = game))+
+        geom_point() +
+        labs(x = "ID Number", y = "Attack Power", title = "Attack Power by ID Number of Compendium Equipment", color = "Game")
+      
+    } else if(input$select_plot == "Boxplot"){
+      GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=botw"))
+      parsed <- fromJSON(rawToChar(GET_result$content))
+      botw <- as_tibble(parsed$data)
+      botw <- mutate(botw, game = "BOTW")
+      
+      GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=totk"))
+      parsed <- fromJSON(rawToChar(GET_result$content), flatten = T)
+      totk <- as_tibble(parsed$data)
+      totk <- mutate(totk, game = "TOTK")
+      
+      combined <- bind_rows(botw, totk)
+      
+      combined <- combined |>
+        filter(!is.na(hearts_recovered))
+      
+      ggplot(combined, aes(x = game, y = hearts_recovered))+
+        geom_boxplot()+
+        labs(x = "Game", y = "Hearts Recovered", title = "Hearts Recovered Across Entries by Game")
+      
+    } else if(input$select_plot == "Heatmap") {
+      GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=botw"))
+      parsed <- fromJSON(rawToChar(GET_result$content))
+      botw <- as_tibble(parsed$data)
+      botw <- mutate(botw, game = "BOTW")
+      
+      GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=totk"))
+      parsed <- fromJSON(rawToChar(GET_result$content), flatten = T)
+      totk <- as_tibble(parsed$data)
+      totk <- mutate(totk, game = "TOTK")
+      
+      combined <- bind_rows(botw, totk)
+      
+      no_listcols <- combined |>
+        select(name, category, common_locations) |>
+        unnest_longer(common_locations, values_to = "location") #https://tidyr.tidyverse.org/reference/unnest_longer.html
+      
+      top_locs <- no_listcols |>
+        count(location, sort = T) |>
+        slice_head(n = 10) |>
+        pull(location)
+      
+      no_listcols <- no_listcols |>
+        filter(location %in% top_locs) #https://stackoverflow.com/questions/74111575/difference-between-in-and-in-operator-in-r
+      
+      no_listcols <- no_listcols |>
+        count(location, category)
+      
+      ggplot(no_listcols, aes(x = category, y = location, fill = n)) +
+        geom_tile(color="white")+
+        scale_fill_viridis_c(option = "inferno")+
+        labs(x = "Category of Compendium Entry", y = "Location in Hyrule", title = "Where Compendium Entries are Found in Hyrule (Top 10 Most Common Locations)", fill = "# Entries")
+      
+    } 
+    
+  })
+  
 }
 
 #Run app 

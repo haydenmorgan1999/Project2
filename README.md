@@ -1,6 +1,7 @@
 # Project2
 
 **Description of App + App Purpose**
+
 This app allows users to search the Hyrule Compendium (Legend of Zelda) in a few different ways:
 
 1) By category (equipment, monsters, materials, etc.) and/or by how many hearts Link recovers when he ingests items from said category

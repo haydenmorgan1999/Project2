@@ -163,8 +163,6 @@ ui <- page_navbar(
                    )
   )
 
-
-
 #Server
 server <- function(input, output){
   output$download_all <- downloadHandler(
@@ -212,7 +210,6 @@ server <- function(input, output){
       } else {
         paste0(input$category, ".csv")
       }
-      
       },
     
     content = function(file){

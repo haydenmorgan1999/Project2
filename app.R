@@ -2,6 +2,7 @@
 #Author: Hayden Morgan
 #Date: 7/8/25
 
+# Load packages ------------------------------------------------------------
 library("httr")
 library("jsonlite")
 library("tidyverse")
@@ -10,7 +11,7 @@ library("bslib")
 library("ggplot2")
 library("DT")
 
-#UI
+# Define UI ----------------------------------------------------------------
 ui <- page_navbar(
     nav_panel("About",
               tags$h1("Project 2 - Hayden Morgan"),
@@ -163,7 +164,7 @@ ui <- page_navbar(
                    )
   )
 
-#Server
+# Define Server ------------------------------------------------------------
 server <- function(input, output){
   output$download_all <- downloadHandler(
     filename = function(){
@@ -515,6 +516,7 @@ server <- function(input, output){
       } else {
         ggplot(combined, aes(x = category, fill = game)) +
           geom_bar(stat = "count") +
+          scale_fill_manual(values = c("BOTW" = "pink", "TOTK" = "yellow"))+
           labs(x = "Compendium Category", y = "# of Entries", title = "Count of Combined Compendium Entries in Each Category", fill = "Game") 
       }
       
@@ -559,7 +561,7 @@ server <- function(input, output){
       combined <- combined |>
         filter(!is.na(hearts_recovered))
       
-      ggplot(combined, aes(x = game, y = hearts_recovered))+
+      ggplot(combined, aes(x = game, y = hearts_recovered, fill = game))+
         geom_boxplot()+
         labs(x = "Game", y = "Hearts Recovered", title = "Hearts Recovered Across Entries by Game")
       
@@ -602,5 +604,5 @@ server <- function(input, output){
   
 }
 
-#Run app 
+# Run App --------------------------------------------------------------------
 shinyApp(ui = ui, server = server)

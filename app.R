@@ -95,6 +95,8 @@ ui <- page_navbar(
                    ),
                    conditionalPanel(
                      condition = "input.summary_type == 'Contingency tables'",
+                     sidebarLayout(
+                       sidebarPanel(
                      radioButtons(
                        "choosegame_contingency",
                        label = "Which game?",
@@ -113,11 +115,14 @@ ui <- page_navbar(
                      actionButton(
                        "show_data_contingency",
                        label = "Show Data"
-                     ),
-                     tableOutput("contingency")
-                   ),
+                     )),
+                     mainPanel(
+                     tableOutput("contingency"))
+                   )),
                    conditionalPanel(
                      condition = "input.summary_type == 'Numerical summaries'",
+                     sidebarLayout(
+                       sidebarPanel(
                      radioButtons(
                        "choosegame_numerical",
                        label = "Which game?",
@@ -137,9 +142,10 @@ ui <- page_navbar(
                      actionButton(
                        "center_spread",
                        label = "Show Data"
-                     ),
-                     tableOutput("center_spread_data")
-                   ),
+                     )),
+                     mainPanel(
+                     tableOutput("center_spread_data"))
+                   )),
                    conditionalPanel(
                      condition = "input.summary_type == 'Plots'",
                      sidebarLayout(

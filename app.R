@@ -15,7 +15,8 @@ library("DT")
 ui <- page_navbar(
     nav_panel("About",
               tags$h1("Project 2 - Hayden Morgan"),
-              p("The purpose of this app is to search the Hyrule Compendium and display its data in various ways."), 
+              p("The purpose of this app is to search the Hyrule Compendium and display its data in various ways."),
+              p("It utilizes data from both Breath of the Wild (BOTW) and Tears of the Kingdom (TOTK)."),
               p("The data comes from the Hyrule Compendium API, which can be found",  
                 a("here", href = "https://gadhagod.github.io/Hyrule-Compendium-API/#/", target = "_blank"), "."), 
               p("The current tab is the 'About' tab, which explains the app."), 
@@ -46,7 +47,7 @@ ui <- page_navbar(
                 card(tags$h1("Function 1: Subset data by category and/or hearts recovered"),
                      selectInput(
                        "category",
-                       label = "Choose a category in the Hyrule compendium:",
+                       label = "Choose a category in the Hyrule compendium (Note: if 'hearts_recovered' doesn't exist for a particular category, the entire category will be returned):",
                        choices = 
                          c("Creatures",
                            "Equipment",
@@ -151,13 +152,22 @@ ui <- page_navbar(
                      sidebarLayout(
                        sidebarPanel(
                          selectInput(
-                           "select_plot",
-                           label = "Which plot type?",
+                           "select_x",
+                           label = "X:",
                            choices = 
-                             c("Barplot",
-                               "Scatterplot",
-                               "Boxplot",
-                               "Heatmap"),
+                             c("Category",
+                               "Compendium ID Number",
+                               "Game (BOTW or TOTK)"),
+                         ),
+                         selectInput(
+                           "select_y",
+                           label = "Y:",
+                           choices = 
+                             c("Number of Entries",
+                               "Equipment Attack Power",
+                               "Equipment Defense Power",
+                               "Hearts Recovered",
+                               "Location in Hyrule")
                          ),
                          uiOutput("plot_ui")
                        ),
@@ -494,14 +504,14 @@ server <- function(input, output){
   })
   
   output$plot_ui <- renderUI ({
-    if(input$select_plot == "Barplot"){
+    if(input$select_y == "Number of Entries" & input$select_x != "Game (BOTW or TOTK)"){
       checkboxInput("facet_games", "Facet by game (BOTW/TOTK)?", value = FALSE)
     } 
   })
   
   output$plot_data <- renderPlot({
-
-    if(input$select_plot == "Barplot"){
+    
+    if(input$select_y == "Number of Entries"){
       GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=botw"))
       parsed <- fromJSON(rawToChar(GET_result$content))
       botw <- as_tibble(parsed$data)
@@ -515,18 +525,52 @@ server <- function(input, output){
       combined <- bind_rows(botw, totk)
       
       if(input$facet_games == FALSE){
-        ggplot(combined, aes(x = category)) +
-          geom_bar(fill="lightblue", stat = "count") + 
-          labs(x = "Compendium Category", y = "# of Entries", title = "Count of Combined Compendium Entries in Each Category", fill = "Game")
+        if(input$select_x == "Category"){
+          
+          ggplot(combined, aes(x = category)) +
+            geom_bar(fill="lightblue", stat = "count") + 
+            labs(x = "Compendium Category", y = "# of Entries", title = "Count of Compendium Item Entries in Each Category")
+          
+        } else if(input$select_x == "Compendium ID Number"){
+          
+          combined <- combined |>
+            filter(id %in% c(385:394)) #I chose this subset because BOTW only has 389 entries and TOTK has 509, so you can see a change in the graph here.
+          
+          ggplot(combined, aes(x = factor(id))) +
+            geom_bar(fill="gray", stat = "count") + 
+            labs(x = "Compendium ID Number (Subset)", y = "# of Entries", title = "Count of Compendium Item Entries for a Subset of ID Numbers")
+          
+        } else {
+          
+          ggplot(combined, aes(x = game, fill = game)) +
+            geom_bar(stat = "count") + 
+            labs(x = "Game (BOTW or TOTK)", y = "# of Entries", title = "Count of Compendium Item Entries in Each Game (BOTW or TOTK)", fill = "Game")+
+            scale_fill_manual(values = c("BOTW" = "lightgreen", "TOTK" = "steelblue"))
+        }
         
       } else {
-        ggplot(combined, aes(x = category, fill = game)) +
-          geom_bar(stat = "count") +
-          scale_fill_manual(values = c("BOTW" = "pink", "TOTK" = "yellow"))+
-          labs(x = "Compendium Category", y = "# of Entries", title = "Count of Combined Compendium Entries in Each Category", fill = "Game") 
-      }
+        if(input$select_x == "Category"){
+          
+          ggplot(combined, aes(x = category, fill = game)) +
+            geom_bar(stat = "count") + 
+            scale_fill_manual(values = c("BOTW" = "pink", "TOTK" = "yellow")) +
+          labs(x = "Compendium Category", y = "# of Entries", title = "Count of Compendium Item Entries in Each Category", fill = "Game")
+          
+        } else if(input$select_x == "Compendium ID Number"){
+          
+          combined <- combined |>
+            filter(id %in% c(385:394))
+          
+          ggplot(combined, aes(x = factor(id), fill = game)) +
+            geom_bar(stat = "count") + 
+            scale_fill_manual(values = c("BOTW" = "pink", "TOTK" = "yellow"))+
+            labs(x = "Compendium ID Number (Subset)", y = "# of Entries", title = "Count of Compendium Item Entries for a Subset of ID Numbers", fill = "Game")
+          
+        } 
+        
+      } 
       
-    } else if(input$select_plot == "Scatterplot"){
+    } else if(input$select_y == "Equipment Attack Power"){
       
       GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/category/equipment?game=botw"))
       parsed <- fromJSON(rawToChar(GET_result$content), flatten = T)
@@ -541,17 +585,31 @@ server <- function(input, output){
       combined <- bind_rows(botw, totk)
       
       combined <- combined |>
-        mutate(
-          attack = map_dbl(properties.attack, ~ ifelse(is.null(.x), NA_real_, .x)), 
-          defense = map_dbl(properties.defense, ~ ifelse(is.null(.x), NA_real_, .x)),
-        ) |>
+        mutate(attack = map_dbl(properties.attack, ~ ifelse(is.null(.x), NA_real_, .x))) |>
         filter(attack < 1000000000) #outlier removed
       
-      ggplot(combined, aes(x = id, y = attack, color = game))+
-        geom_point() +
-        labs(x = "ID Number", y = "Attack Power", title = "Attack Power by ID Number of Compendium Equipment", color = "Game")
+      if(input$select_x == "Category"){
+        
+        ggplot(combined, aes(x = category, y = attack, color = game))+
+          geom_point() +
+          labs(x = "Category", y = "Attack Power", title = "Attack Power by Compendium Category (Only the 'Equipment' Category Has Attack Power)", color = "Game")
+        
+      } else if(input$select_x == "Compendium ID Number"){
+        
+        ggplot(combined, aes(x = id, y = attack, color = game))+
+          geom_point() +
+          labs(x = "Entry ID Number", y = "Equipment Attack Power", title = "Equipment Attack Power by ID Number of Compendium Entry", color = "Game")
+        
+      } else {
+        
+        ggplot(combined, aes(x = game, y = attack, color = game))+
+          geom_point() +
+          scale_color_manual(values = c("BOTW" = "lightgreen", "TOTK" = "steelblue"))+
+          labs(x = "Game (BOTW or TOTK)", y = "Equipment Attack Power", title = "Equipment Attack Power by Game (BOTW or TOTK)", color = "Game")
+        
+      }
       
-    } else if(input$select_plot == "Boxplot"){
+    } else if(input$select_y == "Hearts Recovered"){
       GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=botw"))
       parsed <- fromJSON(rawToChar(GET_result$content))
       botw <- as_tibble(parsed$data)
@@ -567,11 +625,35 @@ server <- function(input, output){
       combined <- combined |>
         filter(!is.na(hearts_recovered))
       
-      ggplot(combined, aes(x = game, y = hearts_recovered, fill = game))+
-        geom_boxplot()+
-        labs(x = "Game", y = "Hearts Recovered", title = "Hearts Recovered Across Entries by Game")
+      if(input$select_x == "Category"){
+        ggplot(combined, aes(x = category, y = hearts_recovered, fill = category))+
+          geom_boxplot()+
+          scale_fill_manual(values = c("creatures" = "gray", "materials" = "red"))+
+          theme(legend.position = "none")+
+          labs(x = "Category", y = "Hearts Recovered", title = "Hearts Recovered Across Categories (For Categories That Include 'Hearts Recovered' Variable Only)")
+        
+      } else if(input$select_x == "Compendium ID Number"){
+        combined <- combined |>
+          mutate(id_group = case_when(
+            id %in% 1:250 ~ "ids_first_half",
+            id %in% 251:509 ~ "ids_second_half"
+          ))
+        
+        ggplot(combined, aes(x = factor(id_group), y = hearts_recovered, fill = id_group))+
+          geom_boxplot()+
+          scale_fill_manual(values = c("ids_first_half" = "lavender", "ids_second_half" = "white"))+
+          theme(legend.position = "none")+
+          labs(x = "Entry ID Number Group (First or Second Half of Compendium)", y = "Hearts Recovered", title = "Hearts Recovered for Each Entry ID Group (First or Second Half of the Compendium)")
+        
+      } else {
+        ggplot(combined, aes(x = game, y = hearts_recovered, fill = game))+
+          geom_boxplot()+
+          scale_fill_manual(values = c("BOTW" = "lightgreen", "TOTK" = "lightblue"))+
+          theme(legend.position = "none")+
+          labs(x = "Game (BOTW or TOTK)", y = "Hearts Recovered", title = "Hearts Recovered for Each Game (BOTW or TOTK)")
+      }
       
-    } else if(input$select_plot == "Heatmap") {
+    } else if(input$select_y == "Location in Hyrule") {
       GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/all?game=botw"))
       parsed <- fromJSON(rawToChar(GET_result$content))
       botw <- as_tibble(parsed$data)
@@ -585,7 +667,7 @@ server <- function(input, output){
       combined <- bind_rows(botw, totk)
       
       no_listcols <- combined |>
-        select(name, category, common_locations) |>
+        select(name, category, common_locations, id, game) |>
         unnest_longer(common_locations, values_to = "location") #https://tidyr.tidyverse.org/reference/unnest_longer.html
       
       top_locs <- no_listcols |>
@@ -596,15 +678,74 @@ server <- function(input, output){
       no_listcols <- no_listcols |>
         filter(location %in% top_locs) #https://stackoverflow.com/questions/74111575/difference-between-in-and-in-operator-in-r
       
-      no_listcols <- no_listcols |>
-        count(location, category)
+      if(input$select_x == "Category"){
+        no_listcols <- no_listcols |>
+          count(location, category)
+        
+        ggplot(no_listcols, aes(x = category, y = location, fill = n)) +
+          geom_tile()+
+          scale_fill_viridis_c(option = "inferno")+
+          labs(x = "Category of Compendium Entry", y = "Location in Hyrule", title = "Where Compendium Entries are Found in Hyrule (Top 10 Most Common Locations)", fill = "# Entries")
+        
+      } else if(input$select_x == "Compendium ID Number"){
+        no_listcols <- no_listcols |>
+          count(location, id) |>
+          filter(id %in% c(385:404))
+        
+        ggplot(no_listcols, aes(x = id, y = location, fill = n)) +
+          geom_tile()+
+          scale_fill_viridis_c(option = "magma")+
+          labs(x = "Entry ID Number", y = "Location in Hyrule", title = "Where a Subset of Compendium Entries Are Found in Hyrule (Each Entry Only Shows Once in a Single Location)", fill = "# of Entry Appearances")
+        
+      } else {
+        no_listcols <- no_listcols |>
+          count(location, game)
+        
+        ggplot(no_listcols, aes(x = game, y = location, fill = n)) +
+          geom_tile()+
+          scale_fill_viridis_c(option = "turbo")+
+          labs(x = "Game (BOTW or TOTK)", y = "Location in Hyrule", title = "Where Compendium Entries are Found in Hyrule (Top 10 Most Common Locations) for Each Game (BOTW or TOTK)", fill = "# Entries")
+        
+      }
       
-      ggplot(no_listcols, aes(x = category, y = location, fill = n)) +
-        geom_tile(color="white")+
-        scale_fill_viridis_c(option = "inferno")+
-        labs(x = "Category of Compendium Entry", y = "Location in Hyrule", title = "Where Compendium Entries are Found in Hyrule (Top 10 Most Common Locations)", fill = "# Entries")
+    } else if(input$select_y == "Equipment Defense Power"){
       
-    } 
+      GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/category/equipment?game=botw"))
+      parsed <- fromJSON(rawToChar(GET_result$content), flatten = T)
+      botw <- as_tibble(parsed$data)
+      botw <- mutate(botw, game = "BOTW")
+      
+      GET_result <- GET(paste0("https://botw-compendium.herokuapp.com/api/v3/compendium/category/equipment?game=totk"))
+      parsed <- fromJSON(rawToChar(GET_result$content), flatten = T)
+      totk <- as_tibble(parsed$data)
+      totk <- mutate(totk, game = "TOTK")
+      
+      combined <- bind_rows(botw, totk)
+      
+      combined <- combined |>
+        mutate(defense = map_dbl(properties.defense, ~ ifelse(is.null(.x), NA_real_, .x)))
+      
+      if(input$select_x == "Category"){
+        
+        ggplot(combined, aes(x = category, y = defense, color = game))+
+          geom_point() +
+          labs(x = "Category", y = "Defense Power", title = "Defense Power by Compendium Category (Only the 'Equipment' Category Has Defense Power)", color = "Game")
+        
+      } else if(input$select_x == "Compendium ID Number"){
+        
+        ggplot(combined, aes(x = id, y = defense, color = game))+
+          geom_point() +
+          labs(x = "Entry ID Number", y = "Equipment Defense Power", title = "Equipment Defense Power by ID Number of Compendium Entry", color = "Game")
+        
+      } else {
+        
+        ggplot(combined, aes(x = game, y = defense, color = game))+
+          geom_point() +
+          scale_color_manual(values = c("BOTW" = "lightgreen", "TOTK" = "steelblue"))+
+          labs(x = "Game (BOTW or TOTK)", y = "Equipment Defense Power", title = "Equipment Defense Power by Game (BOTW or TOTK)", color = "Game")
+        
+      } 
+    }
     
   })
   
